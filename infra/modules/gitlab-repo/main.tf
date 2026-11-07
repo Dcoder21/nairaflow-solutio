@@ -13,12 +13,7 @@ resource "gitlab_branch_protection" "main" {
   branch           = "main"
   allow_force_push = false
 
-  # Newer GitLab provider versions use these blocks instead of
-  # push_access_level / merge_access_level.
-  allowed_to_push {
-    access_level = "no one"
-  }
-  allowed_to_merge {
-    access_level = "maintainer"
-  }
+  # GitLab provider v19: allowed_to_* are sets of objects, assigned with "="
+  allowed_to_push  = [{ access_level = "no one" }]
+  allowed_to_merge = [{ access_level = "maintainer" }]
 }

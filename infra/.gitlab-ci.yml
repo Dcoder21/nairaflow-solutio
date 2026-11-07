@@ -29,7 +29,8 @@ stages: [validate, plan, policy, apply, drift]
     # Job pod runs as the least-privilege tofu-apply service account (infra/bootstrap/tofu-rbac.yaml)
     KUBERNETES_SERVICE_ACCOUNT_OVERWRITE: tofu-apply
   before_script:
-    - apk add --no-cache opentofu curl jq
+    # Retry: on a busy laptop cluster apk can hit a one-off I/O error
+    - for i in 1 2 3; do apk add --no-cache opentofu curl jq && break; echo "apk failed, retry $i"; sleep 5; done
     - tofu version
     - cd "infra/envs/${ENV}"
     - tofu init -input=false

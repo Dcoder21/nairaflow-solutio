@@ -17,14 +17,9 @@ resource "gitlab_branch_protection" "starter_main" {
   branch           = "main"
   allow_force_push = false
 
-  # Newer GitLab provider versions use these blocks instead of
-  # push_access_level / merge_access_level.
-  allowed_to_push {
-    access_level = "no one"
-  }
-  allowed_to_merge {
-    access_level = "maintainer"
-  }
+  # GitLab provider v19: allowed_to_* are sets of objects, assigned with "="
+  allowed_to_push  = [{ access_level = "no one" }]
+  allowed_to_merge = [{ access_level = "maintainer" }]
 }
 
 # 2. The namespace you create by hand with: kubectl create namespace legacy-reports
