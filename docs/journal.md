@@ -82,3 +82,11 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 - [x] Provider lock files for Mac + Linux
 - [x] Day 4: commit infra, MR, pipeline green, apply from `main`, 3 namespaces exist
 - [ ] Day 5: blocked public-repo MR, drift issue, import drill
+
+## Day 6 — Harden the api image
+
+**Broke → fixed**
+- Hardened container crashed: `PermissionError: [Errno 13] Permission denied: '/app/main.py'`. `main.py` on the Mac had permissions `-rw-------` (owner only). `COPY` keeps those permissions and makes root the owner, so user 65532 couldn't read it. Fix: `COPY --chmod=0444 main.py .` (read-only for everyone: the app can read its code but can't change it).
+
+**Tell interns**
+- Running as non-root exposes permission mistakes that root hid. That's a good thing: fix the permissions, never go back to root.
