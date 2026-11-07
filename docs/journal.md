@@ -55,6 +55,19 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 - `plan` shows what would change; only the pipeline applies, after review.
 - "(known after apply)" = values Kubernetes assigns once the thing exists.
 
+## Day 4 — The infrastructure pipeline (Sat 7 Nov 2026)
+
+**Did**
+- Committed infra/, the new root pipeline, threat model and journal on branch `day4-infra`; opened MR !2.
+
+**Broke → fixed**
+- `tflint` failed with 4 warnings: the modules didn't declare which OpenTofu version and provider versions they need. Fix: added `versions.tf` to both modules.
+- The job ran on GitLab's shared SaaS runner (`saas-linux-small-amd64`), not on our runner in the kind cluster. Shared runners can't reach our on-prem cluster, so plan/apply would fail there. Fix: disabled instance (shared) runners for the project, so every job runs on our own runner.
+
+**Tell interns**
+- Linters fail on warnings by design: a module that doesn't pin its versions can break silently when a provider releases a new version.
+- Always check *which* runner picked up your job (top of the job log). For on-prem work, jobs must run on runners inside your network.
+
 ## Next
 - [ ] Provider lock files for Mac + Linux
 - [ ] Day 4: commit infra, MR, pipeline green, apply from `main`, 3 namespaces exist
