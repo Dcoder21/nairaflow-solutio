@@ -1,6 +1,36 @@
-   hello:
-     image: python:3.12-slim
-     script:
-       - cd services/api
-       - pip install -q -r requirements-dev.txt
-       - pytest -q
+# NairaFlow pipeline (one repo: app + infra)
+# - api-tests runs on every merge request and on main
+# - infra/ changes start the infrastructure child pipeline (infra/.gitlab-ci.yml)
+# - the nightly schedule only runs the infra drift check
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+stages: [test, infra]
+
+api-tests:
+  stage: test
+  image: python:3.12-slim
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  script:
+    - cd services/api
+    - pip install -q -r requirements-dev.txt
+    - pytest -q
+
+infra:
+  stage: infra
+  trigger:
+    include: infra/.gitlab-ci.yml
+    strategy: depend
+  variables:
+    PARENT_SOURCE: $CI_PIPELINE_SOURCE
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - changes:
+        - infra/**/*

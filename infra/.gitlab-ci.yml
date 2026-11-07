@@ -1,0 +1,129 @@
+# Infrastructure child pipeline. Started by the root .gitlab-ci.yml when infra/ changes,
+# or by the nightly schedule. Jobs start at the repo root, so every path is under infra/.
+# MR: lint, scan, policy tests, plan + policy check.  main: same, then manual apply.
+# Schedule: drift check only.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+
+stages: [validate, plan, policy, apply, drift]
+
+.not_on_schedule:
+  rules:
+    - if: $PARENT_SOURCE == "schedule"
+      when: never
+    - when: on_success
+
+.tofu:
+  image: alpine:3.22
+  variables:
+    TF_HTTP_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${ENV}"
+    TF_HTTP_LOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${ENV}/lock"
+    TF_HTTP_UNLOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${ENV}/lock"
+    TF_HTTP_LOCK_METHOD: POST
+    TF_HTTP_UNLOCK_METHOD: DELETE
+    TF_HTTP_USERNAME: gitlab-ci-token
+    TF_HTTP_PASSWORD: "${CI_JOB_TOKEN}"
+    TF_HTTP_RETRY_WAIT_MIN: "5"
+    # Job pod runs as the least-privilege tofu-apply service account (infra/bootstrap/tofu-rbac.yaml)
+    KUBERNETES_SERVICE_ACCOUNT_OVERWRITE: tofu-apply
+  before_script:
+    - apk add --no-cache opentofu curl jq
+    - tofu version
+    - cd "infra/envs/${ENV}"
+    - tofu init -input=false
+  parallel:
+    matrix:
+      - ENV: [shared, dev, staging, prod]
+
+fmt:
+  stage: validate
+  image: alpine:3.22
+  extends: .not_on_schedule
+  script:
+    - apk add --no-cache opentofu
+    - cd infra && tofu fmt -check -recursive -diff
+
+tflint:
+  stage: validate
+  extends: .not_on_schedule
+  image:
+    name: ghcr.io/terraform-linters/tflint:v0.53.0
+    entrypoint: [""]
+  script:
+    - cd infra
+    - tflint --init
+    - tflint --recursive
+
+checkov:
+  stage: validate
+  extends: .not_on_schedule
+  image: python:3.12-slim
+  script:
+    - pip install -q "checkov>=3.2,<4"
+    - checkov -d infra --framework terraform --config-file infra/.checkov.yaml
+
+policy-tests:
+  stage: validate
+  extends: .not_on_schedule
+  image:
+    name: openpolicyagent/conftest:v0.56.0
+    entrypoint: [""]
+  script:
+    - conftest verify -p infra/policy
+
+plan:
+  stage: plan
+  extends: [.tofu, .not_on_schedule]
+  script:
+    - tofu plan -input=false -out=plan.cache
+    - tofu show -json plan.cache > tfplan.json
+    - tofu show -no-color plan.cache > plan.txt
+    # Summary shown in the merge request widget
+    - jq -r '([.resource_changes[]?.change.actions?] | flatten) | {"create":(map(select(.=="create"))|length),"update":(map(select(.=="update"))|length),"delete":(map(select(.=="delete"))|length)}' tfplan.json > plan-report.json
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - infra/envs/$ENV/plan.cache
+      - infra/envs/$ENV/tfplan.json
+      - infra/envs/$ENV/plan.txt
+    reports:
+      terraform: infra/envs/$ENV/plan-report.json
+
+policy-check:
+  stage: policy
+  extends: .not_on_schedule
+  image:
+    name: openpolicyagent/conftest:v0.56.0
+    entrypoint: [""]
+  script:
+    - for e in shared dev staging prod; do echo "== $e"; conftest test "infra/envs/$e/tfplan.json" -p infra/policy; done
+
+apply:
+  extends: .tofu
+  stage: apply
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $PARENT_SOURCE != "schedule"
+      when: manual
+  script:
+    - tofu apply -input=false plan.cache
+
+drift:
+  extends: .tofu
+  stage: drift
+  rules:
+    - if: $PARENT_SOURCE == "schedule"
+  script:
+    - set +e
+    - tofu plan -input=false -lock=false -detailed-exitcode > drift.txt; rc=$?
+    - cat drift.txt
+    - |
+      if [ "$rc" -eq 2 ]; then
+        curl -sf --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+          --data-urlencode "title=Drift detected in ${ENV}" \
+          --data-urlencode "description=The nightly plan found changes made outside Git. See ${CI_JOB_URL}" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/issues" > /dev/null
+        echo "Drift found: issue opened"; exit 1
+      fi
+    - exit $rc

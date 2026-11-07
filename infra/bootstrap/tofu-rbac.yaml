@@ -1,0 +1,33 @@
+# One-time bootstrap (the only manual kubectl apply in this repo).
+# Gives the pipeline just enough rights to manage namespaces, quotas,
+# limit ranges and network policies. Nothing else.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tofu-apply
+  namespace: gitlab-runner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tofu-apply
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tofu-apply
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tofu-apply
+subjects:
+  - kind: ServiceAccount
+    name: tofu-apply
+    namespace: gitlab-runner
