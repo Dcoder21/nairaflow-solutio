@@ -81,7 +81,17 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 ## Next
 - [x] Provider lock files for Mac + Linux
 - [x] Day 4: commit infra, MR, pipeline green, apply from `main`, 3 namespaces exist
-- [ ] Day 5: blocked public-repo MR, drift issue, import drill
+- [x] Day 5: blocked public-repo MR, drift issue, import drill
+
+## Day 6 — Harden the api image
+
+**Broke → fixed**
+- Hardened container crashed: `PermissionError: [Errno 13] Permission denied: '/app/main.py'`. `main.py` on the Mac had permissions `-rw-------` (owner only). `COPY` keeps those permissions and makes root the owner, so user 65532 couldn't read it. Fix: `COPY --chmod=0444 main.py .` (read-only for everyone: the app can read its code but can't change it).
+
+- Results: 1.73 GB → 282 MB; OS findings 282 (15 CRITICAL) → 49 HIGH (0 CRITICAL, 48 with no fix yet); root → user 65532. starlette 0.41.3 (3 HIGH) fix deferred to Day 8.
+
+**Tell interns**
+- Running as non-root exposes permission mistakes that root hid. That's a good thing: fix the permissions, never go back to root.
 
 ## Day 7 — Build all images in CI with Buildah
 
