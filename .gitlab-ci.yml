@@ -54,7 +54,9 @@ semgrep:
   extends: .not_on_schedule
   image: python:3.12-slim
   script:
-    - pip install -q "semgrep==1.95.0"
+    # semgrep 1.95 pulls an OpenTelemetry module that still imports pkg_resources,
+    # which ships with setuptools; python:3.12-slim has no setuptools by default.
+    - pip install -q "setuptools<80" "semgrep==1.95.0"
     - semgrep scan --metrics=off --config p/python --config p/secrets --severity ERROR --error services/
 
 build:
