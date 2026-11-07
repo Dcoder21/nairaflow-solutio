@@ -74,6 +74,11 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 - Linters fail on warnings by design: a module that doesn't pin its versions can break silently when a provider releases a new version.
 - Always check *which* runner picked up your job (top of the job log). For on-prem work, jobs must run on runners inside your network.
 
+**Result**
+- MR pipeline green (api-tests + infra child pipeline), merged to `main`.
+- On the `main` pipeline, clicked ▶ apply: shared, dev, staging, prod — all passed. The pipeline (not me) built the 3 namespaces and the private `nairaflow-config` repo.
+
 ## Next
-- [ ] Provider lock files for Mac + Linux
-- [ ] Day 4: commit infra, MR, pipeline green, apply from `main`, 3 namespaces exist
+- [x] Provider lock files for Mac + Linux
+- [x] Day 4: commit infra, MR, pipeline green, apply from `main`, 3 namespaces exist
+- [ ] Day 5: blocked public-repo MR, drift issue, import drill
