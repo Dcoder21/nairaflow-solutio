@@ -82,3 +82,12 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 - [x] Provider lock files for Mac + Linux
 - [x] Day 4: commit infra, MR, pipeline green, apply from `main`, 3 namespaces exist
 - [ ] Day 5: blocked public-repo MR, drift issue, import drill
+
+## Day 7 — Build all images in CI with Buildah
+
+**Broke → fixed**
+- `.gitlab-ci.yml` was silently reset to the old Day 2 version: VS Code had the file open in a stale tab and saved over the update. Fix: restored the file; always close and reopen a tab after a file is changed outside the editor.
+- Buildah failed on the web image: `short-name resolution enforced but cannot prompt without a TTY`. Docker assumes `nginxinc/nginx-unprivileged` means Docker Hub; Buildah refuses to guess which registry a short name means (a guess could pull an impostor image from another registry). Fix: fully qualified names in every Dockerfile: `docker.io/nginxinc/nginx-unprivileged...` and `docker.io/library/python:3.12-slim...`.
+
+**Tell interns**
+- Always write the registry in image names. It's both a Buildah requirement and a supply-chain protection: you say exactly where the image comes from.

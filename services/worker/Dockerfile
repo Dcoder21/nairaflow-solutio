@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # NairaFlow worker — hardened image (Project 1, Day 7). Same pattern as the api.
-ARG PYTHON_IMAGE=python:3.12-slim@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54
+ARG PYTHON_IMAGE=docker.io/library/python:3.12-slim@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54
 
 # ---------- Stage 1: builder ----------
 FROM ${PYTHON_IMAGE} AS builder
