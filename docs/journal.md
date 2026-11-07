@@ -63,6 +63,10 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 **Broke → fixed**
 - `tflint` failed with 4 warnings: the modules didn't declare which OpenTofu version and provider versions they need. Fix: added `versions.tf` to both modules.
 - The job ran on GitLab's shared SaaS runner (`saas-linux-small-amd64`), not on our runner in the kind cluster. Shared runners can't reach our on-prem cluster, so plan/apply would fail there. Fix: disabled instance (shared) runners for the project, so every job runs on our own runner.
+- Shared GitLab runners were also enabled, plus a GitLab Duo (AI review) job from the Ultimate trial that got stuck once shared runners were off. Fix: turned off instance runners, cancelled the Duo job and turned off Duo auto-review; ticked "Run untagged jobs" on our runner (it had never run a job).
+- First job on our own runner failed: `gitlab-runner-helper:x86_64-v19.5.3 ... no match for platform in manifest`. The runner asked for the Intel (x86_64) helper image, but our kind nodes are Apple Silicon (arm64). Fix: set `helper_image` to the `arm64-v19.5.3` tag in runner-values.yaml and `helm upgrade` the runner.
+- `plan [shared]` failed: "Unable to find GitLab token". `GITLAB_TOKEN` was marked Protected, and protected variables are only given to pipelines on protected branches (like `main`), not to merge request pipelines. Fix: unticked "Protect variable" (kept Masked) so MR plans can read it. Trade-off noted: any branch pipeline can now use the token, so only maintainers should be able to push branches.
+- `plan [shared]` then failed: "feature unavailable `push_access_level` ... Use `allowed_to_push` instead". The newer GitLab provider replaced those two settings with `allowed_to_push` / `allowed_to_merge` blocks. Fix: updated the gitlab-repo module (and the import drill example).
 
 **Tell interns**
 - Linters fail on warnings by design: a module that doesn't pin its versions can break silently when a provider releases a new version.

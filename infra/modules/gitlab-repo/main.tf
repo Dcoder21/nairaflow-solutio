@@ -9,9 +9,16 @@ resource "gitlab_project" "this" {
 }
 
 resource "gitlab_branch_protection" "main" {
-  project            = gitlab_project.this.id
-  branch             = "main"
-  push_access_level  = "no one"
-  merge_access_level = "maintainer"
-  allow_force_push   = false
+  project          = gitlab_project.this.id
+  branch           = "main"
+  allow_force_push = false
+
+  # Newer GitLab provider versions use these blocks instead of
+  # push_access_level / merge_access_level.
+  allowed_to_push {
+    access_level = "no one"
+  }
+  allowed_to_merge {
+    access_level = "maintainer"
+  }
 }
