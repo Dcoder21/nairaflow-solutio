@@ -1,0 +1,5 @@
+# Checks skipped because the feature needs a paid GitLab tier. Revisit if you upgrade.
+skip-check:
+  - CKV_GLB_1 # two required approvals (GitLab Premium)
+  - CKV_GLB_3 # push rule: prevent secrets (GitLab Premium)
+  - CKV_GLB_4 # push rule: signed commits (GitLab Premium)

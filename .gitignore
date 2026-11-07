@@ -5,3 +5,10 @@ __pycache__/
 .pytest_cache/
 *.tfstate*
 .terraform/
+
+# Personal Claude Code brief (not for interns)
+CLAUDE.md
+
+# Lab files with tokens: never commit
+runner-values.yaml
+kind.yaml

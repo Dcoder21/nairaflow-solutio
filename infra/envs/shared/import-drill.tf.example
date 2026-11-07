@@ -1,0 +1,38 @@
+# DAY 5 IMPORT DRILL. Rename this file to import-drill.tf, fill in the ID, open an MR.
+# Brings two things you made by hand under code, without recreating them.
+
+variable "starter_project_id" {
+  type        = number
+  description = "Project ID of nairaflow-starter (Settings > General)."
+}
+
+# 1. The branch protection you clicked together on day 2.
+import {
+  to = gitlab_branch_protection.starter_main
+  id = "${var.starter_project_id}:main"
+}
+
+resource "gitlab_branch_protection" "starter_main" {
+  project          = var.starter_project_id
+  branch           = "main"
+  allow_force_push = false
+
+  # GitLab provider v19: allowed_to_* are sets of objects, assigned with "="
+  allowed_to_push  = [{ access_level = "no one" }]
+  allowed_to_merge = [{ access_level = "maintainer" }]
+}
+
+# 2. The namespace you create by hand with: kubectl create namespace legacy-reports
+import {
+  to = module.legacy_reports.kubernetes_namespace_v1.this
+  id = "legacy-reports"
+}
+
+module "legacy_reports" {
+  source      = "../../modules/namespace"
+  name        = "legacy-reports"
+  env         = "prod"
+  owner       = "finance-team"
+  cost_centre = "reporting"
+  quota       = { cpu = "1", memory = "2Gi", pods = "10" }
+}
