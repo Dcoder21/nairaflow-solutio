@@ -1,5 +1,7 @@
 # NairaFlow pipeline (one repo: app + infra)
-# - api-tests runs on every merge request and on main
+# - lint + api-tests on every merge request and on main
+# - build: all 3 images built with Buildah (no privileged pods) and pushed to the
+#   GitLab Container Registry, tagged with the commit SHA (never "latest")
 # - infra/ changes start the infrastructure child pipeline (infra/.gitlab-ci.yml)
 # - the nightly schedule only runs the infra drift check
 
@@ -9,19 +11,50 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "schedule"
 
-stages: [test, infra]
+stages: [lint, test, build, infra]
 
-api-tests:
-  stage: test
-  image: python:3.12-slim
+.not_on_schedule:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - when: on_success
+
+lint:
+  stage: lint
+  extends: .not_on_schedule
+  image: python:3.12-slim
+  script:
+    - pip install -q "ruff==0.6.9"
+    - ruff check services/
+
+api-tests:
+  stage: test
+  extends: .not_on_schedule
+  image: python:3.12-slim
   script:
     - cd services/api
     - pip install -q -r requirements-dev.txt
     - pytest -q
+
+build:
+  stage: build
+  extends: .not_on_schedule
+  # Buildah builds OCI images without a Docker daemon and without privileged mode.
+  # Day 8: pin this image by digest too.
+  image: quay.io/buildah/stable:latest
+  variables:
+    STORAGE_DRIVER: vfs
+    BUILDAH_ISOLATION: chroot
+    BUILDAH_FORMAT: docker
+  parallel:
+    matrix:
+      - SERVICE: [api, worker, web]
+  script:
+    - export IMAGE="${CI_REGISTRY_IMAGE}/${SERVICE}:${CI_COMMIT_SHA}"
+    - echo "$CI_REGISTRY_PASSWORD" | buildah login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - buildah build -t "$IMAGE" "services/${SERVICE}"
+    - buildah push "$IMAGE"
+    - echo "Pushed $IMAGE"
 
 infra:
   stage: infra
