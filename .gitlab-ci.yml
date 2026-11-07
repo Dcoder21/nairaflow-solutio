@@ -62,7 +62,7 @@ build:
   extends: .not_on_schedule
   # Buildah builds OCI images without a Docker daemon and without privileged mode.
   # Day 8: pin this image by digest too.
-  image: quay.io/buildah/stable@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
+  image: quay.io/buildah/stable@sha256:a6f96bfffc47f36462985573d85e87f782bf2d8b37e02cb3dd307713bfa6cc13
   variables:
     STORAGE_DRIVER: vfs
     BUILDAH_ISOLATION: chroot
