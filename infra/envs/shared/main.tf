@@ -28,8 +28,9 @@ data "gitlab_group" "nairaflow" {
 
 # The GitOps config repo Argo CD will read from on day 11.
 module "config_repo" {
-  source       = "../../modules/gitlab-repo"
-  name         = "nairaflow-config"
-  namespace_id = tonumber(data.gitlab_group.nairaflow.id)
-  description  = "Desired state for the NairaFlow cluster (read by Argo CD)."
+  source           = "../../modules/gitlab-repo"
+  name             = "nairaflow-config"
+  namespace_id     = tonumber(data.gitlab_group.nairaflow.id)
+  description      = "Desired state for the NairaFlow cluster (read by Argo CD)."
+  visibility_level = "public"
 }
