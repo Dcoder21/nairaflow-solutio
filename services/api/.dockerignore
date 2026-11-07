@@ -1,0 +1,11 @@
+# Keep the build context (and the image) small and free of secrets/test files
+tests/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.env
+requirements-dev.txt
+pytest.ini
+Dockerfile
+.dockerignore
