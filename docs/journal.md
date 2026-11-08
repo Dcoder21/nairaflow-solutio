@@ -101,3 +101,14 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 
 **Tell interns**
 - Always write the registry in image names. It's both a Buildah requirement and a supply-chain protection: you say exactly where the image comes from.
+
+## Day 8 — Security scanning in CI
+
+**Broke → fixed**
+- Buildah image pinned to the wrong digest: `$D` still held the nginx digest from Day 7 because the new lookup didn't run, so `sed` reused it. Build jobs couldn't pull the image. Fix: `unset D`, look up again, `echo $D` before using it.
+- `semgrep` crashed: `ModuleNotFoundError: No module named 'pkg_resources'`. Semgrep 1.95 depends on an OpenTelemetry module that imports `pkg_resources`, which comes from setuptools, and `python:3.12-slim` doesn't include setuptools. Fix: `pip install "setuptools<80" "semgrep==1.95.0"`.
+- `gitleaks` passed on the first run: no secrets anywhere in the Git history.
+
+**Tell interns**
+- Shell variables live until the terminal closes: always `echo` a variable before using it in a command that edits files.
+- A tool crashing is not the same as a tool finding something. Read whether the error is about your code or about the tool itself.

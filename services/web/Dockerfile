@@ -5,6 +5,12 @@
 #  - Pin by digest in the Day 7 "pin" step.
 ARG NGINX_IMAGE=docker.io/nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
 FROM ${NGINX_IMAGE}
+# Apply Alpine security updates that have a fix. The base image runs as user 101,
+# so switch to root only for this step, then straight back.
+USER root
+RUN apk upgrade --no-cache
+USER 101
+
 COPY --chmod=0444 nginx.conf /etc/nginx/conf.d/default.conf
 COPY --chmod=0444 index.html /usr/share/nginx/html/index.html
 EXPOSE 8080

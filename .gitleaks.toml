@@ -1,0 +1,10 @@
+# Gitleaks config: use the default rules, plus a short, documented allowlist.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Throwaway local-lab credentials only (never used outside docker compose)"
+paths = [
+  '''docker-compose\.yml''',
+  '''\.env\.example''',
+]
