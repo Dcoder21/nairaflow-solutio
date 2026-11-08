@@ -1,0 +1,6 @@
+# Accepted vulnerabilities. One CVE per line, each with a reason and a review date.
+# The pipeline already ignores findings with no fix available (--ignore-unfixed),
+# so only list FIXABLE findings here, and only when there is a real reason to wait.
+#
+# Example:
+# CVE-2025-00000   # reason: not reachable (we never call X); owner: Nuel; review: 2026-12-01
