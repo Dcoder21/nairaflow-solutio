@@ -4,6 +4,7 @@
 # - build: all 3 images built with Buildah (no privileged pods) and pushed to the
 #   GitLab Container Registry, tagged with the commit SHA (never "latest")
 # - scan-image: Trivy fails on HIGH/CRITICAL CVEs that HAVE a fix
+# - sign (main only): Syft SBOM + Cosign signature + SBOM and provenance attestations
 # - infra/ changes start the infrastructure child pipeline (infra/.gitlab-ci.yml)
 # - the nightly schedule only runs the infra drift check
 
@@ -13,7 +14,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "schedule"
 
-stages: [lint, test, scan-code, build, scan-image, infra]
+stages: [lint, test, scan-code, build, scan-image, sign, infra]
 
 .not_on_schedule:
   rules:
@@ -76,8 +77,14 @@ build:
     - export IMAGE="${CI_REGISTRY_IMAGE}/${SERVICE}:${CI_COMMIT_SHA}"
     - echo "$CI_REGISTRY_PASSWORD" | buildah login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
     - buildah build -t "$IMAGE" "services/${SERVICE}"
-    - buildah push "$IMAGE"
-    - echo "Pushed $IMAGE"
+    - mkdir -p digests
+    # Record the exact digest we pushed, so later stages sign THIS image, not a tag
+    - buildah push --digestfile "digests/${SERVICE}.digest" "$IMAGE"
+    - echo "Pushed $IMAGE ($(cat digests/${SERVICE}.digest))"
+  artifacts:
+    paths:
+      - digests/
+    expire_in: 1 week
 
 trivy:
   stage: scan-image
@@ -96,6 +103,59 @@ trivy:
     # and accepted risks are documented in .trivyignore.
     - trivy image --no-progress --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1
         "${CI_REGISTRY_IMAGE}/${SERVICE}:${CI_COMMIT_SHA}"
+
+sbom-sign:
+  stage: sign
+  image: alpine:3.22
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # Only reviewed, merged code gets our seal. The signing key is a protected variable.
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  parallel:
+    matrix:
+      - SERVICE: [api, worker, web]
+  variables:
+    SYFT_REGISTRY_AUTH_AUTHORITY: $CI_REGISTRY
+    SYFT_REGISTRY_AUTH_USERNAME: $CI_REGISTRY_USER
+    SYFT_REGISTRY_AUTH_PASSWORD: $CI_REGISTRY_PASSWORD
+  script:
+    - apk add --no-cache cosign curl
+    - curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin v1.18.1
+    - export REF="${CI_REGISTRY_IMAGE}/${SERVICE}@$(cat digests/${SERVICE}.digest)"
+    - echo "Signing $REF"
+    - cosign login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+    # 1. SBOM: the ingredients list of the image
+    - syft scan "registry:${REF}" -o "cyclonedx-json=sbom-${SERVICE}.cdx.json"
+    # 2. Signature: proof our pipeline produced this exact image.
+    #    --tlog-upload=false: images are private/on-prem, so don't publish to the public Rekor log
+    - cosign sign --key "$COSIGN_PRIVATE_KEY" --tlog-upload=false --yes "$REF"
+    # 3. Attach the SBOM as a signed attestation
+    - cosign attest --key "$COSIGN_PRIVATE_KEY" --tlog-upload=false --yes --type cyclonedx --predicate "sbom-${SERVICE}.cdx.json" "$REF"
+    # 4. Provenance: a signed record of how and where it was built
+    - |
+      cat > "provenance-${SERVICE}.json" <<EOF
+      {
+        "buildDefinition": {
+          "buildType": "${CI_PROJECT_URL}/-/blob/${CI_COMMIT_SHA}/.gitlab-ci.yml",
+          "externalParameters": { "repository": "${CI_PROJECT_URL}", "ref": "${CI_COMMIT_REF_NAME}", "service": "${SERVICE}" },
+          "resolvedDependencies": [ { "uri": "git+${CI_PROJECT_URL}", "digest": { "gitCommit": "${CI_COMMIT_SHA}" } } ]
+        },
+        "runDetails": {
+          "builder": { "id": "${CI_SERVER_URL}/${CI_PROJECT_PATH}/runner/${CI_RUNNER_ID}" },
+          "metadata": { "invocationId": "${CI_PIPELINE_URL}", "startedOn": "${CI_PIPELINE_CREATED_AT}" }
+        }
+      }
+      EOF
+    - cosign attest --key "$COSIGN_PRIVATE_KEY" --tlog-upload=false --yes --type slsaprovenance1 --predicate "provenance-${SERVICE}.json" "$REF"
+    # 5. Prove it: verify with the PUBLIC key committed in the repo
+    - cosign verify --key cosign.pub --insecure-ignore-tlog=true "$REF" > /dev/null && echo "Signature verified"
+    - cosign verify-attestation --key cosign.pub --insecure-ignore-tlog=true --type cyclonedx "$REF" > /dev/null && echo "SBOM attestation verified"
+  artifacts:
+    paths:
+      - sbom-*.cdx.json
+      - provenance-*.json
+    expire_in: 30 days
 
 infra:
   stage: infra
