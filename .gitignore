@@ -12,3 +12,7 @@ CLAUDE.md
 # Lab files with tokens: never commit
 runner-values.yaml
 kind.yaml
+
+# Signing keys: the private key must never be committed
+cosign.key
+*.key
