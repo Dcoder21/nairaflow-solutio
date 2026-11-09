@@ -20,4 +20,7 @@ module "namespace" {
   owner       = "platform-team"
   cost_centre = "payments"
   quota       = { cpu = "2", memory = "4Gi", pods = "30" }
+
+  # Day 10: the CloudNativePG operator must reach the database pods to manage them.
+  allow_from_namespaces = ["envoy-gateway-system", "istio-system", "cnpg-system"]
 }
