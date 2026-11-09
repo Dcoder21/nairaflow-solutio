@@ -112,3 +112,20 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 **Tell interns**
 - Shell variables live until the terminal closes: always `echo` a variable before using it in a command that edits files.
 - A tool crashing is not the same as a tool finding something. Read whether the error is about your code or about the tool itself.
+
+## Day 9 — SBOM and image signing (Mon 9 Nov 2026)
+
+- Generated a Cosign key pair in `nairaflow-lab` (never in the repo). `cosign.pub` committed; `cosign.key` saved as CI variable `COSIGN_PRIVATE_KEY` (Type **File**, Protected).
+- New `sign` stage, `sbom-sign` job (main only, ×3 images): Syft CycloneDX SBOM → `cosign sign` → SBOM + SLSA provenance attestations → verify in the pipeline.
+- Build job now saves each image's digest, so we sign the exact bytes (`@sha256:…`), not a movable tag.
+
+**Problems and fixes**
+- "file name is too long": the key variable was Type *Variable*, so cosign got the key text instead of a file path. Fix: change it to Type **File** and retry.
+- Local verify gave `DENIED: access forbidden`: the registry is private. Fix: log in with a read-only token (`read_registry` scope).
+- zsh `parse error near \n`: `<digest>` was a placeholder, and `<` is a shell symbol. Fix: verify by commit-SHA tag; cosign resolves it to the digest.
+
+**Result:** verified from the Mac: `api:59ac272a…` → digest `sha256:4b07ead9…`, "signatures were verified against the specified public key".
+
+**Tell interns**
+- Public key in the repo, private key only in a protected **File** variable.
+- Tags can move; digests can't. Always sign the digest.
