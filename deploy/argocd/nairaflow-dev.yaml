@@ -47,3 +47,22 @@ spec:
     automated:
       prune: false                       # never auto-delete the database
       selfHeal: true
+---
+# 3) Cluster security policies (Kyverno). Cluster-wide, so no namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nairaflow-policies
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://gitlab.com/nairaflow-group/nairaflow-starter.git
+    targetRevision: main
+    path: deploy/policies
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true                     # nobody can switch the guard off by hand

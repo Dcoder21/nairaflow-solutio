@@ -1,0 +1,73 @@
+# Day 11B — Kyverno: only images signed by OUR pipeline may run in the NairaFlow namespaces.
+# The public key is cosign.pub from the repo root (Day 9). The private key never leaves GitLab CI.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-signed-images
+  annotations:
+    policies.kyverno.io/title: Only signed NairaFlow images
+    policies.kyverno.io/description: Blocks any NairaFlow image that was not signed by the main-branch pipeline.
+spec:
+  validationFailureAction: Enforce        # block, don't just warn
+  webhookTimeoutSeconds: 30
+  background: false
+  rules:
+    - name: check-cosign-signature
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [nairaflow-dev, nairaflow-staging, nairaflow-prod]
+      verifyImages:
+        - imageReferences:
+            - "registry.gitlab.com/nairaflow-group/nairaflow-starter/*"
+          imageRegistryCredentials:
+            secrets: [gitlab-registry]     # read-only pull pass, copied into the kyverno namespace
+          mutateDigest: true               # always run by digest, never by a movable tag
+          verifyDigest: true
+          required: true
+          attestors:
+            - entries:
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEaxGB9vKMwZv9rzyT/pXZxQWhLcku
+                      dkR1Qcma7ZAB0pX/pvFJbA/Tm9fsReQ4/12S7tNtat1VVz+T/29IX2k9Hw==
+                      -----END PUBLIC KEY-----
+                    rekor:
+                      ignoreTlog: true     # we sign with our own key, no public log (same as Day 9)
+                    ctlog:
+                      ignoreSCT: true
+---
+# Without this, an attacker could skip the signature check by using an image from another registry.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: allowed-registries
+  annotations:
+    policies.kyverno.io/title: Approved registries only
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: only-approved-registries
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [nairaflow-dev, nairaflow-staging, nairaflow-prod]
+      validate:
+        message: >-
+          Image not from an approved registry. Allowed: our GitLab registry,
+          the pinned Redis image, and CloudNativePG images.
+        foreach:
+          - list: "request.object.spec.[containers, initContainers, ephemeralContainers][]"
+            deny:
+              conditions:
+                all:
+                  - key: "{{ element.image }}"
+                    operator: AnyNotIn
+                    value:
+                      - "registry.gitlab.com/nairaflow-group/nairaflow-starter/*"
+                      - "docker.io/library/redis:*"
+                      - "ghcr.io/cloudnative-pg/*"
