@@ -1,0 +1,74 @@
+# Day 10 — Redis for the dev environment: the queue between api and worker.
+# A plain Deployment (no operator needed): Redis here is a queue, not our
+# system of record, so losing it on restart costs us nothing important.
+#
+# The password comes from Secret "redis-auth", created by hand (never in Git):
+#   kubectl create secret generic redis-auth -n nairaflow-dev \
+#     --from-literal=password="$(openssl rand -hex 24)"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: nairaflow-dev
+  labels: { app: redis }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      automountServiceAccountToken: false     # Redis never talks to the Kubernetes API
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999                         # the "redis" user inside the image
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: redis
+          image: docker.io/library/redis:8-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
+          args:
+            - --requirepass
+            - $(REDIS_PASSWORD)                # Kubernetes fills this in from the Secret
+            - --save
+            - ""                               # no snapshots: it's a queue, not storage
+            - --appendonly
+            - "no"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: redis-auth, key: password }
+          ports:
+            - containerPort: 6379
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 250m, memory: 128Mi }
+          readinessProbe:
+            tcpSocket: { port: 6379 }
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: 6379 }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /data }  # Redis needs one writable folder
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: nairaflow-dev
+spec:
+  selector: { app: redis }
+  ports:
+    - port: 6379
+      targetPort: 6379
