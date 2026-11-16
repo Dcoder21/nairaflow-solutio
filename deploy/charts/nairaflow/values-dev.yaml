@@ -1,0 +1,5 @@
+# dev environment. Digests are filled by the command in the Day 10 guide.
+images:
+  api:    { digest: "sha256:1d5db4b8bbc3a304d147216b000b00c771eff7af43b48b99361bfb4d88c07b0c" }
+  worker: { digest: "sha256:5329fe6e969027ef4b131a468d3aedd1398c2e8dfedc817c9325c9af57205d3e" }
+  web:    { digest: "sha256:81a643a2351fdd7f8d5c6e500fe07c2b82ce3a4297c8a86dde1440fad1ac919c" }
