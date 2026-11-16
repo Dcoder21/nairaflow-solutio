@@ -1,0 +1,49 @@
+# Day 11 — Argo CD Applications for the dev environment.
+# After this is applied once, Argo CD deploys from Git. Nobody runs helm or kubectl apply by hand.
+#
+# 1) The app itself: the Helm chart with the dev digests.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nairaflow-dev
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://gitlab.com/nairaflow-group/nairaflow-starter.git
+    targetRevision: main                 # only reviewed, merged code is deployed
+    path: deploy/charts/nairaflow
+    helm:
+      releaseName: nairaflow
+      valueFiles:
+        - values-dev.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nairaflow-dev
+  syncPolicy:
+    automated:
+      prune: true                        # delete things that were removed from Git
+      selfHeal: true                     # undo changes made by hand in the cluster
+---
+# 2) The data services: Postgres (CNPG Cluster) and Redis.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nairaflow-dev-data
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://gitlab.com/nairaflow-group/nairaflow-starter.git
+    targetRevision: main
+    path: deploy
+    directory:
+      recurse: true
+      include: "{db/*.yaml,redis/*.yaml}"   # only these folders, not the chart
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nairaflow-dev
+  syncPolicy:
+    automated:
+      prune: false                       # never auto-delete the database
+      selfHeal: true
