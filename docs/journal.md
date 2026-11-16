@@ -181,10 +181,19 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 
 - selfHeal proof: `kubectl scale deploy/api --replicas=3` by hand → Argo CD put it back to 1 within ~11 s (the 2 extra pods went Terminating; the original 84-minute pod kept running). The cluster obeys Git, not people. Screenshot: `screenshots/day11-04-selfheal-scale-reverted.jpg`
 
+**Part B — Kyverno (signed images only)**
+- `deploy/policies/verify-signed-images.yaml`: `verify-signed-images` (our registry images must carry a signature matching `cosign.pub`; Enforce; mutateDigest) and `allowed-registries` (only our GitLab registry, pinned Redis, CloudNativePG). Deployed by a third Argo CD app `nairaflow-policies` with selfHeal, so nobody can switch the guard off by hand.
+- Pull pass copied into `kyverno` so it can read signatures from the private registry.
+- Demo: signed image from main → `pod/demo-signed created`; unsigned MR-branch image → blocked: `verify-signed-images ... no signatures found`; `nginx:latest` from Docker Hub → blocked: `Image not from an approved registry`. Screenshot: `screenshots/day11-06-kyverno-blocks-unsigned-and-dockerhub.jpg`
+
 **Problems and fixes**
+- Kyverno chart 3.10.0 (v1.20.0) failed its pre-install job `kyverno-check-legacy-policies`, but left a half-install (pods pulling). v1.20 appears to drop the legacy `ClusterPolicy` format we use. Fix: `helm uninstall`, delete the `kyverno` namespace, check no Kyverno webhooks are left (they could block all pod creation), wait for the namespace to finish terminating, then pin chart 3.6.4 (v1.16.4). Follow-up: migrate to Kyverno's new policy types.
+- Kyverno admission controller stuck `PodInitializing` ~7 min: slow image download (`kyverno:v1.16.4`, 3 min pull + waiting). Not a fault.
+- New Argo CD app didn't appear after merge: Argo CD watches apps, not the file that lists them. Fix: `kubectl apply -f deploy/argocd/nairaflow-dev.yaml` once. Follow-up: app-of-apps.
 - Repo secret command failed: ran the Part C `docker-registry` command with an empty `$DT_PASS` and a typo (`ggitlab+...`). Nothing was created. Fix: the `generic` secret in `argocd` with `$ARGO_PASS`; check a secret variable with `echo ${#VAR}` (length only).
 
 **Open items**
+- Kyverno runs 1 admission replica (lab). Prod needs 2–3 so the door is never unguarded.
 - api pods end in `Error` ~30 s after Terminating: they don't stop on SIGTERM, so Kubernetes force-kills them after the 30 s grace period. Harmless here, but a reliability finding (in-flight requests could be cut). Investigate graceful shutdown in Project 2.
 - Change the Argo CD admin password and delete `argocd-initial-admin-secret` before Day 15.
 
