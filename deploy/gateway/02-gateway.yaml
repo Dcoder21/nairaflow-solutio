@@ -13,6 +13,9 @@ spec:
     kubernetes:
       envoyService:
         type: NodePort
+        # kind only forwards Mac ports to the control-plane node, but Envoy runs on the worker.
+        # "Local" (Envoy Gateway's default) drops traffic on nodes without an Envoy pod → hang.
+        externalTrafficPolicy: Cluster
         patch:
           type: StrategicMerge
           value:
