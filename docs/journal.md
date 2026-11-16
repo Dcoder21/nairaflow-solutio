@@ -171,7 +171,7 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 - A default-deny policy blocks your own tools too: add each namespace on purpose, never switch the policy off.
 - "Closed connection / timeout / reset" = network problem, not code. Retry first.
 
-## Day 11 — GitOps with Argo CD (Mon 16 Nov 2026) — in progress
+## Day 11 — GitOps, signed-image admission, sealed secrets (Mon 16 Nov 2026)
 
 **Part A — Argo CD**
 - Installed Argo CD with Helm: chart `argo/argo-cd` 10.18.0 (app v3.6.1), namespace `argocd`, `dex.enabled=false`.
@@ -186,7 +186,16 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 - Pull pass copied into `kyverno` so it can read signatures from the private registry.
 - Demo: signed image from main → `pod/demo-signed created`; unsigned MR-branch image → blocked: `verify-signed-images ... no signatures found`; `nginx:latest` from Docker Hub → blocked: `Image not from an approved registry`. Screenshot: `screenshots/day11-06-kyverno-blocks-unsigned-and-dockerhub.jpg`
 
+**Part C — Sealed Secrets**
+- Controller installed from the project's release manifest in `kube-system`, version matched to the `kubeseal` CLI (`brew install kubeseal`). Controller private key backed up to `nairaflow-lab/sealed-secrets-key-BACKUP.yaml` (never in Git).
+- Existing `redis-auth` and `gitlab-registry` annotated `sealedsecrets.bitnami.com/managed=true`, then sealed into `deploy/secrets/*.sealed.yaml` (encrypted, locked to name + namespace). Data app now also syncs `secrets/*.yaml`. Screenshots: `screenshots/day11-07-sealed-secret-encrypted.jpg`, `screenshots/day11-08-sealedsecrets-synced-by-argocd.jpg`
+- Proof: `kubectl delete secret redis-auth` → recreated by the controller from Git within ~10 s, same password, Redis answers `PONG`. Screenshot: `screenshots/day11-09-sealed-secret-rebuilt-pong.jpg`
+
 **Problems and fixes**
+- Sealed Secrets Helm repo `https://bitnami-labs.github.io/sealed-secrets` returned 404. Fix: install from the GitHub release `controller.yaml` instead.
+- `$SS` was `null`: GitHub's API rate-limits anonymous calls. Fix: take the version from `kubeseal --version` (tool and controller should match anyway).
+- Main pipeline trivy job failed: `failed to download vulnerability DB ... unexpected EOF` (home internet dropped during a ~4 min DB download). Fix: Retry. Follow-up: `retry:` on trivy/build jobs and cache the Trivy DB.
+- `# SYNCED should say True` produced `NotFound` errors: zsh doesn't treat `#` as a comment when typed interactively. Harmless. Fix for interns: `setopt interactivecomments` in `~/.zshrc`, or don't paste comments.
 - Kyverno chart 3.10.0 (v1.20.0) failed its pre-install job `kyverno-check-legacy-policies`, but left a half-install (pods pulling). v1.20 appears to drop the legacy `ClusterPolicy` format we use. Fix: `helm uninstall`, delete the `kyverno` namespace, check no Kyverno webhooks are left (they could block all pod creation), wait for the namespace to finish terminating, then pin chart 3.6.4 (v1.16.4). Follow-up: migrate to Kyverno's new policy types.
 - Kyverno admission controller stuck `PodInitializing` ~7 min: slow image download (`kyverno:v1.16.4`, 3 min pull + waiting). Not a fault.
 - New Argo CD app didn't appear after merge: Argo CD watches apps, not the file that lists them. Fix: `kubectl apply -f deploy/argocd/nairaflow-dev.yaml` once. Follow-up: app-of-apps.
