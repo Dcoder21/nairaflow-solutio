@@ -66,3 +66,22 @@ spec:
     automated:
       prune: true
       selfHeal: true                     # nobody can switch the guard off by hand
+---
+# 4) The front door: internal CA, HTTPS gateway and routes (Day 12).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nairaflow-edge
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://gitlab.com/nairaflow-group/nairaflow-starter.git
+    targetRevision: main
+    path: deploy/gateway
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

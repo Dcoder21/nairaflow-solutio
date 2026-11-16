@@ -1,0 +1,123 @@
+# Day 12 — HTTPS at the front door with Envoy Gateway (Kubernetes Gateway API).
+# Browser → https://localhost:8443 → kind (8443 → NodePort 30443) → Envoy → web:8080
+---
+# How the Envoy proxy is exposed: fixed NodePorts that kind maps to the Mac (Day 1 kind.yaml).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: nodeport-proxy
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: NodePort
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                - { port: 80,  nodePort: 30080 }
+                - { port: 443, nodePort: 30443 }
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: eg
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: nodeport-proxy
+    namespace: envoy-gateway-system
+---
+# The server certificate for the front door, issued by OUR CA and renewed automatically.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: nairaflow-tls
+  namespace: nairaflow-dev
+spec:
+  secretName: nairaflow-tls
+  duration: 2160h             # 90 days
+  renewBefore: 360h           # renew 15 days before expiry
+  dnsNames: [localhost, nairaflow.localhost]
+  ipAddresses: [127.0.0.1]
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Never     # keep the same key on renewal so the Day 14 pin stays valid
+  issuerRef:
+    name: nairaflow-ca
+    kind: ClusterIssuer
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: nairaflow-gw
+  namespace: nairaflow-dev
+spec:
+  gatewayClassName: eg
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: nairaflow-tls
+---
+# Plain HTTP only ever answers with "go to HTTPS".
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: http-to-https
+  namespace: nairaflow-dev
+spec:
+  parentRefs:
+    - { name: nairaflow-gw, sectionName: http }
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            port: 8443
+            statusCode: 301
+---
+# HTTPS traffic goes to the web service, with HSTS so browsers never use HTTP again.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-https
+  namespace: nairaflow-dev
+spec:
+  parentRefs:
+    - { name: nairaflow-gw, sectionName: https }
+  rules:
+    - backendRefs:
+        - { name: web, port: 8080 }
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: Strict-Transport-Security
+                value: "max-age=31536000; includeSubDomains"
+---
+# Only modern TLS at the edge.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: tls-hardening
+  namespace: nairaflow-dev
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: nairaflow-gw
+  tls:
+    minVersion: "1.2"
