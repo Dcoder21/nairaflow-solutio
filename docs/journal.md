@@ -129,3 +129,28 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 **Tell interns**
 - Public key in the repo, private key only in a protected **File** variable.
 - Tags can move; digests can't. Always sign the digest.
+
+## Day 10 — Database with CloudNativePG (Mon 9 Nov 2026) — in progress
+
+**Goal of Day 10:** run the signed images as a working app on Kubernetes, with its database and queue. Part A = the database.
+
+- Installed the CloudNativePG operator with Helm (chart 0.29.1, app 1.30.1) in its own namespace `cnpg-system`. Screenshot: `screenshots/day10-01-cnpg-crds-installed.jpg`
+- `infra/envs/dev/main.tf`: added `cnpg-system` to `allow_from_namespaces` so the operator can reach the database pods through our default-deny network policy. Changed through MR + pipeline, not kubectl.
+- `deploy/db/postgres.yaml`: ConfigMap with the schema + seed accounts (tables handed to user `nairaflow`), and a CNPG `Cluster` called `pg` (1 instance, 1Gi, requests/limits for the quota). The operator generates the password into Secret `pg-app` — no password in Git.
+
+- Proof: `psql` in `pg-1` lists all 4 seed accounts (ACC001–ACC004). Screenshot: `screenshots/day10-05-accounts-seeded.jpg`
+
+**Part B — Redis**
+- `deploy/redis/redis.yaml`: plain Deployment + Service (a queue, not the system of record, so no operator or disk). Image pinned by digest (`redis:8-alpine@sha256:7958cfbb…`), non-root 999, read-only root filesystem, all capabilities dropped, no service-account token, resources for the quota.
+- Password: random, created with `kubectl create secret generic redis-auth ... $(openssl rand -hex 24)` — never typed, never in Git; Redis starts with `--requirepass $(REDIS_PASSWORD)`.
+- Proof: `redis-cli ping` without the password → `NOAUTH Authentication required`; with it → `PONG`. Screenshot: `screenshots/day10-06-redis-auth-noauth-pong.jpg`
+
+**Problems and fixes**
+- `namespaces "nairaflow-dev" not found`: kubectl was pointed at a second test cluster (`kind-nairaflow-lab`, made while testing the intern walkthrough). Creating a kind cluster switches kubectl to it automatically. Fix: `kubectl config use-context kind-nairaflow`. Lesson: check `kubectl config current-context` first when things "disappear".
+- Main pipeline `build: [api]` failed on push: `use of closed network connection`. Cause: home internet dropped during upload (runner lives on the Mac). Fix: Retry the job. Possible hardening: `retry: max 2` on the build job.
+- Cluster stuck with `Instance Status Extraction Error: HTTP communication issue`. Cause: the MR was merged but **apply-dev was never run**, so the network policy still blocked `cnpg-system` from the pod's status port. Checked with `kubectl get networkpolicy ... | grep metadata.name` (only 2 names). Fix: ran ▶ apply-dev on the main infra pipeline; the operator got through on its own and the cluster went healthy. Screenshots: `day10-02-cnpg-http-communication-issue.jpg`, `day10-03-apply-dev-green.jpg`, `day10-04-gate-open-cluster-healthy.jpg`
+
+**Tell interns**
+- Merging code does not change the cluster. The apply job does.
+- A default-deny policy blocks your own tools too: add each namespace on purpose, never switch the policy off.
+- "Closed connection / timeout / reset" = network problem, not code. Retry first.
