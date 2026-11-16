@@ -145,7 +145,23 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 - Password: random, created with `kubectl create secret generic redis-auth ... $(openssl rand -hex 24)` — never typed, never in Git; Redis starts with `--requirepass $(REDIS_PASSWORD)`.
 - Proof: `redis-cli ping` without the password → `NOAUTH Authentication required`; with it → `PONG`. Screenshot: `screenshots/day10-06-redis-auth-noauth-pong.jpg`
 
+**Part C — Pull secret**
+- GitLab deploy token `k8s-pull-dev` (scope `read_registry` only, with expiry) — belongs to the project, not a person, can only read images.
+- Stored in the cluster as `kubectl create secret docker-registry gitlab-registry -n nairaflow-dev ...` (token read with `read -s`, never in Git or shell history).
+- Proof: pod without the pass → `ImagePullBackOff`; same pod with `imagePullSecrets: gitlab-registry` → `pulled ok`. Test pods deleted. Screenshot: `screenshots/day10-07-pull-secret-before-after.jpg`
+
+**Part D — Helm chart (`deploy/charts/nairaflow`)**
+- One chart for api, worker and web. `values.yaml` = shared settings; `values-dev.yaml` = the image digests for dev.
+- Images pinned by digest (the chart refuses to render without one) and checked with `cosign verify` before install — Day 9 pays off.
+- Passwords only from Secrets: `DATABASE_URL` from `pg-app` (CNPG), `REDIS_URL` built from `redis-auth` via `$(REDIS_PASSWORD)`. Pull pass `gitlab-registry` on every pod.
+- Same hardening as Redis: non-root, read-only root filesystem (+ `/tmp` emptyDir), all capabilities dropped, seccomp RuntimeDefault, no service-account token, resources for the quota. api readiness `/readyz`, liveness `/healthz`.
+- `helm upgrade --install nairaflow ... -n nairaflow-dev -f values-dev.yaml --wait` → api, worker, web `1/1 Running`.
+
+**Part F — End to end**
+- `kubectl port-forward -n nairaflow-dev svc/web 8090:8080`, then through nginx: `/api/accounts` (4 accounts) → `POST /api/transfers` (`PENDING`) → worker log `processed <id>` → Postgres row `COMPLETED`. Screenshots: `screenshots/day10-08-end-to-end-transfer-completed.jpg`, `screenshots/day10-09-dashboard-in-kubernetes.jpg` (dashboard via port-forward: ACC001 ₦498,500, ACC002 ₦251,500, transfer ₦1,500 COMPLETED)
+
 **Problems and fixes**
+- `cosign verify` went to Docker Hub (`index.docker.io/v2//api`): `$R` was empty in a new terminal tab. Fix: set `R=...` again and `echo $R` first.
 - `namespaces "nairaflow-dev" not found`: kubectl was pointed at a second test cluster (`kind-nairaflow-lab`, made while testing the intern walkthrough). Creating a kind cluster switches kubectl to it automatically. Fix: `kubectl config use-context kind-nairaflow`. Lesson: check `kubectl config current-context` first when things "disappear".
 - Main pipeline `build: [api]` failed on push: `use of closed network connection`. Cause: home internet dropped during upload (runner lives on the Mac). Fix: Retry the job. Possible hardening: `retry: max 2` on the build job.
 - Cluster stuck with `Instance Status Extraction Error: HTTP communication issue`. Cause: the MR was merged but **apply-dev was never run**, so the network policy still blocked `cnpg-system` from the pod's status port. Checked with `kubectl get networkpolicy ... | grep metadata.name` (only 2 names). Fix: ran ▶ apply-dev on the main infra pipeline; the operator got through on its own and the cluster went healthy. Screenshots: `day10-02-cnpg-http-communication-issue.jpg`, `day10-03-apply-dev-green.jpg`, `day10-04-gate-open-cluster-healthy.jpg`

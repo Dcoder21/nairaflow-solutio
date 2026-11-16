@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels: { app: api, app.kubernetes.io/part-of: nairaflow }
+spec:
+  replicas: {{ .Values.replicas.api }}
+  selector:
+    matchLabels: { app: api }
+  template:
+    metadata:
+      labels: { app: api, app.kubernetes.io/part-of: nairaflow }
+    spec:
+      {{- include "nairaflow.podSecurity" . | nindent 6 }}
+      containers:
+        - name: api
+          image: {{ include "nairaflow.image" (dict "root" . "name" "api") }}
+          ports:
+            - containerPort: 8000
+          {{- include "nairaflow.backendEnv" . | nindent 10 }}
+          {{- include "nairaflow.containerSecurity" . | nindent 10 }}
+          resources: {{- toYaml .Values.resources.api | nindent 12 }}
+          readinessProbe:            # only send traffic when DB and Redis answer
+            httpGet: { path: /readyz, port: 8000 }
+            periodSeconds: 5
+          livenessProbe:             # restart if the process hangs
+            httpGet: { path: /healthz, port: 8000 }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api                          # nginx (web) proxies to http://api:8000
+spec:
+  selector: { app: api }
+  ports:
+    - port: 8000
+      targetPort: 8000
