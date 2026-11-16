@@ -145,6 +145,11 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 - Password: random, created with `kubectl create secret generic redis-auth ... $(openssl rand -hex 24)` — never typed, never in Git; Redis starts with `--requirepass $(REDIS_PASSWORD)`.
 - Proof: `redis-cli ping` without the password → `NOAUTH Authentication required`; with it → `PONG`. Screenshot: `screenshots/day10-06-redis-auth-noauth-pong.jpg`
 
+**Part C — Pull secret**
+- GitLab deploy token `k8s-pull-dev` (scope `read_registry` only, with expiry) — belongs to the project, not a person, can only read images.
+- Stored in the cluster as `kubectl create secret docker-registry gitlab-registry -n nairaflow-dev ...` (token read with `read -s`, never in Git or shell history).
+- Proof: pod without the pass → `ImagePullBackOff`; same pod with `imagePullSecrets: gitlab-registry` → `pulled ok`. Test pods deleted. Screenshot: `screenshots/day10-07-pull-secret-before-after.jpg`
+
 **Problems and fixes**
 - `namespaces "nairaflow-dev" not found`: kubectl was pointed at a second test cluster (`kind-nairaflow-lab`, made while testing the intern walkthrough). Creating a kind cluster switches kubectl to it automatically. Fix: `kubectl config use-context kind-nairaflow`. Lesson: check `kubectl config current-context` first when things "disappear".
 - Main pipeline `build: [api]` failed on push: `use of closed network connection`. Cause: home internet dropped during upload (runner lives on the Mac). Fix: Retry the job. Possible hardening: `retry: max 2` on the build job.
