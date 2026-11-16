@@ -39,7 +39,7 @@ spec:
     path: deploy
     directory:
       recurse: true
-      include: "{db/*.yaml,redis/*.yaml}"   # only these folders, not the chart
+      include: "{db/*.yaml,redis/*.yaml,secrets/*.yaml}"   # only these folders, not the chart
   destination:
     server: https://kubernetes.default.svc
     namespace: nairaflow-dev
