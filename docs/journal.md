@@ -170,3 +170,24 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 - Merging code does not change the cluster. The apply job does.
 - A default-deny policy blocks your own tools too: add each namespace on purpose, never switch the policy off.
 - "Closed connection / timeout / reset" = network problem, not code. Retry first.
+
+## Day 11 — GitOps with Argo CD (Mon 16 Nov 2026) — in progress
+
+**Part A — Argo CD**
+- Installed Argo CD with Helm: chart `argo/argo-cd` 10.18.0 (app v3.6.1), namespace `argocd`, `dex.enabled=false`.
+- Repo access: GitLab deploy token `argocd-read` (scope `read_repository` only) stored as Secret `gitlab-repo` in `argocd` with label `argocd.argoproj.io/secret-type=repository`. Screenshot: `screenshots/day11-01-argocd-repo-secret-created.jpg` (cropped: the admin password was on screen below).
+- `deploy/argocd/nairaflow-dev.yaml` (MR !14): two Applications reading `main` — `nairaflow-dev` (Helm chart + values-dev.yaml, prune + selfHeal) and `nairaflow-dev-data` (deploy/db + deploy/redis, selfHeal, prune OFF so a Git mistake can never delete the database).
+- Handover from Helm: deleted only Helm's release record (`kubectl delete secret -l owner=helm,name=nairaflow`) — pods kept running — then `kubectl apply -f deploy/argocd/nairaflow-dev.yaml`, the last manual deploy. Both apps `Synced / Healthy`. Screenshots: `screenshots/day11-02-handover-synced-healthy.jpg`, `screenshots/day11-03-argocd-apps-healthy-synced.jpg` (Argo CD v3.6.1 dashboard: both apps Healthy + Synced from main), `screenshots/day11-05-argocd-app-tree.jpg` (nairaflow-dev tree: 2 Services + 3 Deployments, auto-sync on; author email blurred)
+
+- selfHeal proof: `kubectl scale deploy/api --replicas=3` by hand → Argo CD put it back to 1 within ~11 s (the 2 extra pods went Terminating; the original 84-minute pod kept running). The cluster obeys Git, not people. Screenshot: `screenshots/day11-04-selfheal-scale-reverted.jpg`
+
+**Problems and fixes**
+- Repo secret command failed: ran the Part C `docker-registry` command with an empty `$DT_PASS` and a typo (`ggitlab+...`). Nothing was created. Fix: the `generic` secret in `argocd` with `$ARGO_PASS`; check a secret variable with `echo ${#VAR}` (length only).
+
+**Open items**
+- api pods end in `Error` ~30 s after Terminating: they don't stop on SIGTERM, so Kubernetes force-kills them after the 30 s grace period. Harmless here, but a reliability finding (in-flight requests could be cut). Investigate graceful shutdown in Project 2.
+- Change the Argo CD admin password and delete `argocd-initial-admin-secret` before Day 15.
+
+**Tell interns**
+- Never `helm uninstall` to hand over to Argo CD — it deletes the app. Remove only Helm's release record.
+- Never screenshot a terminal that shows a password; crop or `clear` first.
