@@ -1,0 +1,31 @@
+# Default settings. Each environment overrides what it needs (values-dev.yaml).
+registry: registry.gitlab.com/nairaflow-group/nairaflow-starter
+
+# Images are pinned by digest (sha256:...), never by a tag that can move.
+# Fill these per environment from the signed images on main.
+images:
+  api:    { digest: "" }
+  worker: { digest: "" }
+  web:    { digest: "" }
+
+imagePullSecret: gitlab-registry      # Part C: read-only deploy token
+
+database:
+  secretName: pg-app                  # Part A: created by CloudNativePG
+  secretKey: uri                      # full connection string
+
+redis:
+  secretName: redis-auth              # Part B: created by us
+  secretKey: password
+  host: redis
+  port: 6379
+
+replicas:
+  api: 1
+  worker: 1
+  web: 1
+
+resources:
+  api:    { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
+  worker: { requests: { cpu: 50m,  memory: 128Mi }, limits: { cpu: 250m, memory: 256Mi } }
+  web:    { requests: { cpu: 50m,  memory: 32Mi },  limits: { cpu: 200m, memory: 64Mi } }

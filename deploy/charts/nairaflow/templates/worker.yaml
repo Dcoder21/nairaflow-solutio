@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels: { app: worker, app.kubernetes.io/part-of: nairaflow }
+spec:
+  replicas: {{ .Values.replicas.worker }}
+  selector:
+    matchLabels: { app: worker }
+  template:
+    metadata:
+      labels: { app: worker, app.kubernetes.io/part-of: nairaflow }
+    spec:
+      {{- include "nairaflow.podSecurity" . | nindent 6 }}
+      containers:
+        - name: worker
+          image: {{ include "nairaflow.image" (dict "root" . "name" "worker") }}
+          {{- include "nairaflow.backendEnv" . | nindent 10 }}
+          {{- include "nairaflow.containerSecurity" . | nindent 10 }}
+          resources: {{- toYaml .Values.resources.worker | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+# No Service: the worker receives no traffic, it pulls jobs from Redis.
