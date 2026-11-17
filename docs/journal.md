@@ -209,3 +209,17 @@ One entry per day: what I did, what broke, how I fixed it, and what to tell inte
 **Tell interns**
 - Never `helm uninstall` to hand over to Argo CD — it deletes the app. Remove only Helm's release record.
 - Never screenshot a terminal that shows a password; crop or `clear` first.
+
+## Day 12 — HTTPS at the front door (Mon 16 Nov 2026)
+
+- cert-manager (jetstack chart, CRDs on) and Envoy Gateway (OCI chart `envoyproxy/gateway-helm`) installed with Helm, versions pinned from the repo at install time.
+- `deploy/gateway/01-internal-ca.yaml`: our own CA — self-signed bootstrap → "NairaFlow Internal Root CA" (ECDSA P-256, 10 years) → ClusterIssuer `nairaflow-ca`.
+- `deploy/gateway/02-gateway.yaml`: EnvoyProxy (NodePort 30080/30443 = kind's 8080/8443), GatewayClass `eg`, Certificate `nairaflow-tls` (90 days, auto-renew 15 days early, key kept on renewal for Day 14 pinning), Gateway with HTTP + HTTPS listeners, `http-to-https` 301 redirect, `web-https` route + HSTS header, ClientTrafficPolicy TLS ≥ 1.2. Deployed by a 4th Argo CD app `nairaflow-edge`.
+- Proof: `http://localhost:8080` → 301; `https://localhost:8443` → 200; the dashboard loads in Safari at https://localhost:8443. Screenshots: `screenshots/day12-01-dashboard-over-https.jpg`, `screenshots/day12-02-redirect-301-https-200.jpg`
+
+**Problems and fixes**
+- Safari "can't open page" and curl hung on both 8080 and 8443 (`000`): Envoy Gateway's default `externalTrafficPolicy: Local` only accepts traffic on nodes running an Envoy pod. kind forwards Mac ports to the control-plane node, but Envoy ran on the worker, so packets were silently dropped. Fix (MR !20): `externalTrafficPolicy: Cluster` in the EnvoyProxy. Lesson: a hang means traffic was dropped, not refused.
+
+**Tell interns**
+- Merging is not deploying: a new Argo CD app needs `kubectl apply -f deploy/argocd/nairaflow-dev.yaml` once (until we add app-of-apps).
+- Use `curl -m 5` so a test gives up instead of hanging forever.
